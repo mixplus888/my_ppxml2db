@@ -645,9 +645,17 @@ class PortfolioPerformanceXML2DB:
                     if el.get("id") or el.find("uuid") is not None:
                         # TRACE PROBE
                         print(">>> PROBE KICKED IN: PARSING AN ACCOUNT TRANSACTION NODE <<<")
-                        # FIXED: Find the parent container and get the actual account UUID
-                        parent = el.getparent()
-                        lookup_uuid = self.uuid(parent.find("account")) if parent.find("account") is not None else (el.findtext("uuid") if el.get("id") is None else self.cur_uuid())
+                        
+                        # CLIMB THE TREE: Find the ancestor account node dynamically
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "account":
+                            ancestor = ancestor.getparent()
+                        
+                        # Grab the UUID of that ancestor account container
+                        if ancestor is not None and ancestor.find("uuid") is not None:
+                            lookup_uuid = ancestor.find("uuid").text
+                        else:
+                            lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
                         if lookup_uuid in self.uuid2ctr_map:
                             assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
@@ -656,19 +664,33 @@ class PortfolioPerformanceXML2DB:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
-                elif el.tag == "accountTransaction":
+                elif el.tag in ("accountTransaction", "accounttransaction"):
                     if el.get("id") or el.find("uuid") is not None:
-                        parent = el.getparent()
-                        uuid = self.uuid(parent.find("account"))
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "account":
+                            ancestor = ancestor.getparent()
+                            
+                        if ancestor is not None and ancestor.find("uuid") is not None:
+                            uuid = ancestor.find("uuid").text
+                        else:
+                            uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+
                         if uuid in self.uuid2ctr_map:
                             assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
                         self.handle_xact("account", uuid, el, 0)
 
-                elif el.tag in ("portfolio-transaction",):
+                elif el.tag == "portfolio-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        # FIXED: Find the parent container and get the actual portfolio UUID
-                        parent = el.getparent()
-                        lookup_uuid = self.uuid(parent.find("portfolio")) if parent.find("portfolio") is not None else (el.findtext("uuid") if el.get("id") is None else self.cur_uuid())
+                        # CLIMB THE TREE: Find the ancestor portfolio node dynamically
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "portfolio":
+                            ancestor = ancestor.getparent()
+                            
+                        # Grab the UUID of that ancestor portfolio container
+                        if ancestor is not None and ancestor.find("uuid") is not None:
+                            lookup_uuid = ancestor.find("uuid").text
+                        else:
+                            lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
                         routing_type = "portfolio"
                         if lookup_uuid in self.uuid2ctr_map:
@@ -680,10 +702,16 @@ class PortfolioPerformanceXML2DB:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
-                elif el.tag in ("portfolioTransaction",):
+                elif el.tag in ("portfolioTransaction", "portfoliotransaction"):
                     if el.get("id") or el.find("uuid") is not None:
-                        parent = el.getparent()
-                        uuid = self.uuid(parent.find("portfolio"))
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "portfolio":
+                            ancestor = ancestor.getparent()
+                            
+                        if ancestor is not None and ancestor.find("uuid") is not None:
+                            uuid = ancestor.find("uuid").text
+                        else:
+                            uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
                         routing_type = "portfolio"
                         if uuid in self.uuid2ctr_map:
