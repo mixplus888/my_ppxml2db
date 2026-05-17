@@ -643,31 +643,10 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "account-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        lookup_uuid = None
-                        
-                        # LAYER 1: Check for direct child reference link element inside the node
-                        try:
-                            target_node = el.find("account")
-                            if target_node is not None:
-                                lookup_uuid = self.uuid(target_node)
-                        except Exception:
-                            pass
-                            
-                        # LAYER 2: Fall back to crawling the ancestor tree wrappers
-                        if not lookup_uuid:
-                            try:
-                                ancestor = el.getparent()
-                                while ancestor is not None and ancestor.tag != "account":
-                                    ancestor = ancestor.getparent()
-                                if ancestor is not None:
-                                    lookup_uuid = ancestor.get("uuid") or ancestor.get("id") or ancestor.findtext("uuid") or ancestor.findtext("id")
-                            except Exception:
-                                pass
-                                
-                        # LAYER 3: Absolute safety fallback to original tracking default
-                        if not lookup_uuid:
-                            lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
-                        
+                        # CORRECT: Data transactions must use their own unique transaction UUID
+                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        if lookup_uuid in self.uuid2ctr_map:
+                            assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
                         self.handle_xact("account", lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
@@ -678,34 +657,14 @@ class PortfolioPerformanceXML2DB:
                         parent = el.getparent()
                         account_node = parent.find("account")
                         uuid = self.uuid(account_node) if account_node is not None else self.cur_uuid()
+                        if uuid in self.uuid2ctr_map:
+                            assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
                         self.handle_xact("account", uuid, el, 0)
 
                 elif el.tag == "portfolio-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        lookup_uuid = None
-                        
-                        # LAYER 1: Check for direct child reference link element inside the node
-                        try:
-                            target_node = el.find("portfolio")
-                            if target_node is not None:
-                                lookup_uuid = self.uuid(target_node)
-                        except Exception:
-                            pass
-                            
-                        # LAYER 2: Fall back to crawling the ancestor tree wrappers
-                        if not lookup_uuid:
-                            try:
-                                ancestor = el.getparent()
-                                while ancestor is not None and ancestor.tag != "portfolio":
-                                    ancestor = ancestor.getparent()
-                                if ancestor is not None:
-                                    lookup_uuid = ancestor.get("uuid") or ancestor.get("id") or ancestor.findtext("uuid") or ancestor.findtext("id")
-                            except Exception:
-                                pass
-                                
-                        # LAYER 3: Absolute safety fallback to original tracking default
-                        if not lookup_uuid:
-                            lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        # CORRECT: Data transactions must use their own unique transaction UUID
+                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
                         routing_type = "portfolio"
                         if lookup_uuid in self.uuid2ctr_map:
