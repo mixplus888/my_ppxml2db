@@ -716,7 +716,8 @@ class PortfolioPerformanceXML2DB:
                 preserve = False
                 if self.container_stack and self.container_stack[-1][0] in ("taxonomy", "dashboard", "settings"):
                     preserve = True
-                elif el.tag in ("units", "unit"):
+                # FIXED: Preserve nested identity and accounting children during traversal
+                elif el.tag in ("units", "unit", "amount", "uuid", "id"):
                     preserve = True
                 elif el.tag in ("limitPrice", "bookmark"):
                     preserve = True
@@ -724,7 +725,10 @@ class PortfolioPerformanceXML2DB:
                     preserve = True
                 elif self.el_stack and self.el_stack[-1] == "watchlist" and el.tag == "securities":
                     preserve = True
-                elif self.container_stack and self.container_stack[-1][0] in ("security", "account", "portfolio") and el.tag == "attributes":
+                # FIXED: Retain structural transaction trees and account frameworks so handlers can parse them
+                elif el.tag in ("account", "portfolio", "account-transaction", "accountTransaction", "portfolio-transaction", "portfolioTransaction", "crossEntry", "transactionFrom", "transactionTo"):
+                    preserve = True
+                elif self.container_stack and self.container_stack[-1][0] in ("security", "account", "portfolio") and el.tag in ("attributes", "property", "entry"):
                     preserve = True
 
                 if not preserve:
