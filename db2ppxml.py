@@ -607,7 +607,6 @@ def main():
 
     root.wr_end()
     # FIXED: Force the streaming IO buffers to flush out of memory and write directly to disk
-    global out
     if out and out != sys.stdout:
         out.flush()
         out.close()
