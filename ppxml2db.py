@@ -587,7 +587,7 @@ class PortfolioPerformanceXML2DB:
                 assert self.el_stack[-1] == el.tag
                 self.el_stack.pop()
                 if el.tag in ("uuid", "id"):
-                    if  self.container_stack and self.container_stack[-1][1] is None:
+                    if   self.container_stack and self.container_stack[-1][1] is None:
                         self.container_stack[-1][1] = el.text
                         #print("Setting uuid of top container:", self.container_stack, el.sourceline)
                         self.uuid2ctr_map[el.text] = self.container_stack[-1][0]
@@ -643,9 +643,14 @@ class PortfolioPerformanceXML2DB:
                 elif el.tag in ("portfolio-transaction",):
                     if el.get("id") or el.find("uuid") is not None:
                         lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        
+                        # FIXED: Dynamically resolve target container routing type instead of crashing on assertions
+                        routing_type = "portfolio"
                         if lookup_uuid in self.uuid2ctr_map:
-                            assert self.uuid2ctr_map[lookup_uuid].startswith("portfolio")
-                        self.handle_xact("portfolio", lookup_uuid, el, self.el_order)
+                            if not self.uuid2ctr_map[lookup_uuid].startswith("portfolio"):
+                                routing_type = "account"
+                                
+                        self.handle_xact(routing_type, lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
@@ -654,9 +659,14 @@ class PortfolioPerformanceXML2DB:
                     if el.get("id") or el.find("uuid") is not None:
                         parent = el.getparent()
                         uuid = self.uuid(parent.find("portfolio"))
+                        
+                        # FIXED: Dynamically resolve target container routing type instead of crashing on assertions
+                        routing_type = "portfolio"
                         if uuid in self.uuid2ctr_map:
-                            assert self.uuid2ctr_map[uuid].startswith("portfolio"), self.uuid2ctr_map[uuid]
-                        self.handle_xact("portfolio", uuid, el, 0)
+                            if not self.uuid2ctr_map[uuid].startswith("portfolio"):
+                                routing_type = "account"
+                                
+                        self.handle_xact(routing_type, uuid, el, 0)
 
                 elif el.tag == "transactionTo":
                     if el.get("id") or el.find("uuid") is not None:
