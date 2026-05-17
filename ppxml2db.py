@@ -26,10 +26,10 @@ def ren(d, old, new):
         d[new] = d[old]
         del d[old]
 
-
 def as_bool(v):
-    return {"false": 0, "true": 1}[v]
-
+    if not v or v.strip() == "": 
+        return 0
+    return {"false": 0, "true": 1}.get(v.lower().strip(), 0)
 
 def dump_el(el):
     print(ET.tostring(el).decode())
