@@ -264,38 +264,43 @@ class PortfolioPerformanceXML2DB:
         if not acc_uuid or acc_uuid == "None":
             return
 
-        # RELATION LINK REPAIR: If acc_uuid is pointing to an individual transaction ID
-        # instead of a parent account container, crawl up the XML tree to find the true parent owner.
+        # RELATION LINK REPAIR: Correctly parse DOM attribute keys rather than flat text blocks
         is_real_account = dbhelper.select("account", where="uuid='%s'" % acc_uuid)
         if not is_real_account:
             parent = el.getparent()
-            # Climb up the tree up to 3 tiers to find a node owning an account/portfolio reference string
-            for _ in range(3):
+            for _ in range(4): # Step up to 4 layers to escape deeply nested unit blocks
                 if parent is None: 
                     break
-                # Check for explicit reference structures inside account metadata loops
-                account_node = parent.find("account")
-                if account_node is not None and account_node.text:
-                    acc_uuid = account_node.text
-                    break
-                portfolio_node = parent.find("portfolio")
-                if portfolio_node is not None and portfolio_node.text:
-                    acc_uuid = portfolio_node.text
-                    break
+                
+                # Check attributes and nested structural nodes for parent account containers
+                account_node = parent if parent.tag == "account" else parent.find("account")
+                if account_node is not None:
+                    acc_uuid = account_node.get("id") or account_node.get("uuid") or account_node.findtext("uuid")
+                    if acc_uuid:
+                        break
+                        
+                portfolio_node = parent if parent.tag == "portfolio" else parent.find("portfolio")
+                if portfolio_node is not None:
+                    acc_uuid = portfolio_node.get("id") or portfolio_node.get("uuid") or portfolio_node.findtext("uuid")
+                    if acc_uuid:
+                        break
                 parent = parent.getparent()
 
-        # GUARD: Dynamically check the element or fallback parsing tracking properties for transaction UUID
-        xact_uuid_check = el.findtext("uuid") or el.get("id") or (el.find("id").text if el.find("id") is not None else None)
-        
+        # GUARD: Safely extract structural unique transaction tracking key
+        xact_uuid_check = el.findtext("uuid") or el.get("id")
+        if not xact_uuid_check:
+            id_node = el.find("id")
+            xact_uuid_check = id_node.text if id_node is not None else None
+            
         if not hasattr(self, "_seen_xacts"):
             self._seen_xacts = set()
             
         if xact_uuid_check:
             if xact_uuid_check in self._seen_xacts:
-                return # Already handled on an alternative event path, skip
+                return 
             self._seen_xacts.add(xact_uuid_check)
 
-        # Start with calculating unit aggregates, to add to xact row in DB.
+        # Calculate unit aggregates
         units_dict = defaultdict(int)
         for unit_el in el.findall("units/unit"):
             am_el = unit_el.find("amount")
@@ -305,38 +310,37 @@ class PortfolioPerformanceXML2DB:
                 except (ValueError, TypeError):
                     pass
 
-        props = [
-            "uuid",
-            "date",
-            "currencyCode",
-            "amount",
-            "shares",
-            "note",
-            "source",
-            "updatedAt",
-            "type",
-            "id",
-        ]
+        props = ["uuid", "date", "currencyCode", "amount", "shares", "note", "source", "updatedAt"]
         fields = self.parse_props(el, props)
         ren(fields, "currencyCode", "currency")
-        ren(fields, "id", "_xmlid")
+        
+        # FIX: Resolve implicit transaction types based on nested operation tag configurations
+        fields["type"] = el.findtext("type") or el.get("type")
+        if not fields["type"]:
+            # Check if there is an explicit operation tag nested inside the transaction row
+            for child in el:
+                if child.tag in ("buy", "sell", "deposit", "removal", "transfer-in", "transfer-out", "dividend"):
+                    fields["type"] = child.tag
+                    break
+            if not fields["type"]:
+                fields["type"] = "transaction"
+
+        # Map tracking variables directly back into SQLite schema targets
+        fields["_xmlid"] = el.get("id") or xact_uuid_check
         fields["account"] = acc_uuid
         fields["acctype"] = acc_type
         fields["_order"] = orderno
+        
         sec = el.find("security")
         if sec is not None:
-            fields["security"] = self.uuid(sec)
+            fields["security"] = sec.get("reference") or self.uuid(sec)
+            
         fields["fees"] = units_dict["FEE"]
         fields["taxes"] = units_dict["TAX"]
         
-        # GUARD: Fallback default uuid generation if parse_props returned empty
-        if not fields.get("uuid") and xact_uuid_check:
-            fields["uuid"] = xact_uuid_check
-        elif not fields.get("uuid"):
-            import uuid
-            fields["uuid"] = str(uuid.uuid4())
+        if not fields.get("uuid"):
+            fields["uuid"] = xact_uuid_check if xact_uuid_check else str(uuid.uuid4())
 
-        # FIXED: Explicitly satisfy the SQLite NOT NULL constraint for _xmlid before executing insert
         if not fields.get("_xmlid") or str(fields.get("_xmlid")) == "None":
             fields["_xmlid"] = fields["uuid"]
 
@@ -344,7 +348,7 @@ class PortfolioPerformanceXML2DB:
             dbhelper.insert("xact", fields)
         except Exception as e:
             if "UNIQUE constraint failed" in str(e):
-                return # Skip remaining unit arrays, already safely saved
+                return 
             raise e
 
         xact_uuid = fields["uuid"]
