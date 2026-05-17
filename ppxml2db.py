@@ -643,6 +643,8 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "account-transaction":
                     if el.get("id") or el.find("uuid") is not None:
+                        # TRACE PROBE
+                        print(">>> PROBE KICKED IN: PARSING AN ACCOUNT TRANSACTION NODE <<<")
                         # FIXED: Find the parent container and get the actual account UUID
                         parent = el.getparent()
                         lookup_uuid = self.uuid(parent.find("account")) if parent.find("account") is not None else (el.findtext("uuid") if el.get("id") is None else self.cur_uuid())
