@@ -286,13 +286,21 @@ def make_portfolio(etree, pel, uuid, el_name="portfolio"):
             return
         add_xmlid(el, uuid)
         output_els[uuid] = el
+        
+        # Pull the main portfolio details
         port_r = dbhelper.select("account", where="uuid='%s'" % uuid)[0]
         make_prop(el, port_r, "uuid")
         make_prop(el, port_r, "name")
         make_prop(el, port_r, "isRetired", conv=as_bool)
-        refacc_res = dbhelper.select("account", where="uuid='%s'" % port_r["referenceAccount"])[0]
-        if refacc_res:
-            make_account(etree, el, refacc_res[0], el_name="referenceAccount")
+        
+        # FIXED: Check if referenceAccount exists and is not 'None' before querying
+        ref_account_uuid = port_r.get("referenceAccount")
+        if ref_account_uuid and str(ref_account_uuid).strip() not in ("", "None"):
+            refacc_query = dbhelper.select("account", where="uuid='%s'" % ref_account_uuid)
+            if refacc_query:
+                refacc_res = refacc_query[0]  # This is now our row dictionary
+                # FIXED: Pass the dictionary row straight in without treating it like a nested matrix list
+                make_account(etree, el, refacc_res, el_name="referenceAccount")
 
         xacts = ET.SubElement(el, "transactions")
         make_xacts(etree, xacts, port_r["uuid"])
@@ -303,7 +311,6 @@ def make_portfolio(etree, pel, uuid, el_name="portfolio"):
 
         make_prop(el, port_r, "updatedAt")
         el.wr_end()
-
 
 def make_account(etree, pel, acc_r, el_name="account"):
         acc = ET.SubElement(pel, el_name)
