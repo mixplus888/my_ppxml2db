@@ -651,9 +651,9 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "account":
                             ancestor = ancestor.getparent()
                         
-                        # Grab the UUID of that ancestor account container
-                        if ancestor is not None and ancestor.find("uuid") is not None:
-                            lookup_uuid = ancestor.find("uuid").text
+                        # FIXED: Use the script's internal robust uuid extraction engine
+                        if ancestor is not None:
+                            lookup_uuid = self.uuid(ancestor)
                         else:
                             lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
@@ -670,8 +670,8 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "account":
                             ancestor = ancestor.getparent()
                             
-                        if ancestor is not None and ancestor.find("uuid") is not None:
-                            uuid = ancestor.find("uuid").text
+                        if ancestor is not None:
+                            uuid = self.uuid(ancestor)
                         else:
                             uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
 
@@ -686,9 +686,9 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "portfolio":
                             ancestor = ancestor.getparent()
                             
-                        # Grab the UUID of that ancestor portfolio container
-                        if ancestor is not None and ancestor.find("uuid") is not None:
-                            lookup_uuid = ancestor.find("uuid").text
+                        # FIXED: Use the script's internal robust uuid extraction engine
+                        if ancestor is not None:
+                            lookup_uuid = self.uuid(ancestor)
                         else:
                             lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
@@ -708,8 +708,8 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "portfolio":
                             ancestor = ancestor.getparent()
                             
-                        if ancestor is not None and ancestor.find("uuid") is not None:
-                            uuid = ancestor.find("uuid").text
+                        if ancestor is not None:
+                            uuid = self.uuid(ancestor)
                         else:
                             uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
