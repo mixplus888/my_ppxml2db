@@ -264,6 +264,26 @@ class PortfolioPerformanceXML2DB:
         if not acc_uuid or acc_uuid == "None":
             return
 
+        # RELATION LINK REPAIR: If acc_uuid is pointing to an individual transaction ID
+        # instead of a parent account container, crawl up the XML tree to find the true parent owner.
+        is_real_account = dbhelper.select("account", where="uuid='%s'" % acc_uuid)
+        if not is_real_account:
+            parent = el.getparent()
+            # Climb up the tree up to 3 tiers to find a node owning an account/portfolio reference string
+            for _ in range(3):
+                if parent is None: 
+                    break
+                # Check for explicit reference structures inside account metadata loops
+                account_node = parent.find("account")
+                if account_node is not None and account_node.text:
+                    acc_uuid = account_node.text
+                    break
+                portfolio_node = parent.find("portfolio")
+                if portfolio_node is not None and portfolio_node.text:
+                    acc_uuid = portfolio_node.text
+                    break
+                parent = parent.getparent()
+
         # GUARD: Dynamically check the element or fallback parsing tracking properties for transaction UUID
         xact_uuid_check = el.findtext("uuid") or el.get("id") or (el.find("id").text if el.find("id") is not None else None)
         
