@@ -316,6 +316,10 @@ class PortfolioPerformanceXML2DB:
             import uuid
             fields["uuid"] = str(uuid.uuid4())
 
+        # FIXED: Explicitly satisfy the SQLite NOT NULL constraint for _xmlid before executing insert
+        if not fields.get("_xmlid") or str(fields.get("_xmlid")) == "None":
+            fields["_xmlid"] = fields["uuid"]
+
         try:
             dbhelper.insert("xact", fields)
         except Exception as e:
@@ -348,7 +352,7 @@ class PortfolioPerformanceXML2DB:
                 if "UNIQUE constraint failed" in str(e):
                     continue
                 raise e
-
+            
     def handle_crossEntry(self, x_el):
         if x_el.get("reference") is not None:
             return
