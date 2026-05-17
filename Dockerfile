@@ -2,14 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install sqlite3 for the database conversions
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
+# Install sqlite3 and compiler tools needed for lxml compilation
+RUN apt-get update && apt-get install -y sqlite3 libxml2-dev libxslt-dev gcc && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies from your repo
-COPY requirements.txt* ./
-RUN pip install --no-cache-dir -r requirements.txt || echo "No requirements file or empty"
+# Force install lxml library
+RUN pip install --no-cache-dir lxml
 
-# Copy all your repository files (including ppxml2db.py) into the container
+# Copy all your repository files into the container
 COPY . /app
 
 RUN chmod +x /app/sync_pipeline.sh
