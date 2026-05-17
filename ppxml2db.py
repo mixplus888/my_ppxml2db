@@ -155,20 +155,36 @@ class PortfolioPerformanceXML2DB:
         sec = self.parse_props(el, props)
         ren(sec, "currencyCode", "currency")
         ren(sec, "targetCurrencyCode", "targetCurrency")
-        dbhelper.insert("security", sec)
+        
+        # FIXED: Safeguard against duplicate execution passes on the same XML node
+        if not hasattr(self, "_seen_securities"):
+            self._seen_securities = set()
+            
+        if sec["uuid"] in self._seen_securities:
+            return # Already ingested this security in a prior event pass, skip duplicate work
+            
+        self._seen_securities.add(sec["uuid"])
+        
+        try:
+            dbhelper.insert("security", sec)
 
-        for fields in self.parse_attributes(el):
-            fields["security"] = sec["uuid"]
-            dbhelper.insert("security_attr", fields)
+            for fields in self.parse_attributes(el):
+                fields["security"] = sec["uuid"]
+                dbhelper.insert("security_attr", fields)
 
-        prop_els = el.findall("property")
-        for seq, prop_el in enumerate(prop_els):
-            fields = {
-                "security": sec["uuid"], "type": prop_el.get("type"),
-                "name": prop_el.get("name"), "value": prop_el.text, "seq": seq,
-            }
-            dbhelper.insert("security_prop", fields)
-
+            prop_els = el.findall("property")
+            for seq, prop_el in enumerate(prop_els):
+                fields = {
+                    "security": sec["uuid"], "type": prop_el.get("type"),
+                    "name": prop_el.get("name"), "value": prop_el.text, "seq": seq,
+                }
+                dbhelper.insert("security_prop", fields)
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                pass # Extra fallback protective layer
+            else:
+                raise e
+            
     def handle_account_attrs(self, pel, uuid):
         for fields in self.parse_attributes(pel):
             fields["account"] = uuid
