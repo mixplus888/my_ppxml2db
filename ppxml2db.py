@@ -103,11 +103,17 @@ class PortfolioPerformanceXML2DB:
             yield fields
 
     def handle_price(self, price_el):
-            props = ["t", "v"]
-            price_fields = self.parse_props(price_el, props)
-            ren(price_fields, "v", "value")
-            ren(price_fields, "t", "tstamp")
-            price_fields["security"] = self.cur_uuid()
+        props = ["t", "v"]
+        price_fields = self.parse_props(price_el, props)
+        ren(price_fields, "v", "value")
+        ren(price_fields, "t", "tstamp")
+        
+        # 1. Grab the security ID safely
+        security_id = self.cur_uuid()
+        
+        # 2. Only insert if the price actually belongs to a known security
+        if security_id is not None:
+            price_fields["security"] = security_id
             dbhelper.insert("price", price_fields)
 
     def handle_latest(self, latest_el):
@@ -394,6 +400,8 @@ class PortfolioPerformanceXML2DB:
         self.refcache = {}
 
     def cur_uuid(self):
+        if not self.container_stack:
+            return None
         return self.container_stack[-1][1]
 
     def iterparse(self):
