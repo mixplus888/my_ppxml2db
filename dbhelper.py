@@ -76,10 +76,15 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
 
     safe_table = f'"{table}"' if table == "transaction" else table
 
-    # 1. First-pass: Bootstrap the table dynamically if it doesn't exist at all
+    # 1. First-pass: Bootstrap the table dynamically if it doesn't exist
     if fields:
         try:
-            columns_schema = [f'"{key}" TEXT' for key in fields.keys()]
+            # FIXED: Explicitly add an "_id" auto-incrementing primary key to every table
+            columns_schema = ['"_id" INTEGER PRIMARY KEY AUTOINCREMENT']
+            for key in fields.keys():
+                if key != "_id":  # Avoid duplicates if _id is somehow already in fields
+                    columns_schema.append(f'"{key}" TEXT')
+            
             execute_dml(f'CREATE TABLE IF NOT EXISTS {safe_table} ({", ".join(columns_schema)});', [])
         except Exception as e:
             print(f"Initial schema build warning for {table}: {e}")
@@ -91,29 +96,25 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
     qmarks = [param_mark] * len(fields)
     sql = "INSERT%s INTO %s(%s) VALUES (%s)" % (repl_clause, safe_table, ", ".join(field_names), ", ".join(qmarks))
 
-    # 2. Execute with a self-healing retry block for missing columns
+    # 2. Execute with our self-healing retry block for missing columns
     try:
+        import sqlite3
         id = execute_dml(sql, field_vals, returning)
         return id
     except sqlite3.OperationalError as e:
         error_msg = str(e)
-        # Check if the error is specifically about a missing column
         if "has no column named" in error_msg:
-            # Extract the column name from the error string
             missing_col = error_msg.split("has no column named")[-1].strip()
             print(f"Patching schema: Adding missing column {missing_col} to table {table}...")
             
             try:
-                # Dynamically alter the table layout to inject the new column
                 execute_dml(f'ALTER TABLE {safe_table} ADD COLUMN "{missing_col}" TEXT;', [])
-                # Retry the original insertion now that the schema matches
                 id = execute_dml(sql, field_vals, returning)
                 return id
             except Exception as retry_err:
                 print(f"Failed to auto-heal schema for {table}: {retry_err}")
                 raise retry_err
         else:
-            # If it's a completely different SQL error, raise it normally
             raise e
 
 
