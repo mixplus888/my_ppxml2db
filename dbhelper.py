@@ -71,27 +71,66 @@ def executescript(sql):
 
 
 def insert(table, fields=None, or_replace=False, returning=None, **kw):
-    # --- SAFETY PATCH START ---
-    if table == "latest_price":
-        # Get a temporary cursor from the active database connection
-        # (Assuming 'get_cursor' or 'conn' is available globally in dbhelper.py, 
-        # but if not, executing it directly on the connection works)
-        try:
-            import sqlite3
-            # We execute it safely to ensure the table structure exists
-            execute_dml("""
-                CREATE TABLE IF NOT EXISTS latest_price (
-                    security TEXT,
-                    tstamp TEXT,
-                    value INTEGER,
-                    high TEXT,
-                    low TEXT,
-                    volume INTEGER
-                );
-            """, [])
-        except Exception as e:
-            print(f"Warning during latest_price table creation: {e}")
-    # --- SAFETY PATCH END ---
+    # --- GLOBAL SCHEMA FALLBACK PATCH START ---
+    try:
+        # If a core table like 'security' doesn't exist, build the entire schema at once
+        execute_dml("""
+            CREATE TABLE IF NOT EXISTS security (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                isin TEXT,
+                ticker TEXT,
+                wkn TEXT,
+                feed TEXT,
+                note TEXT
+            );
+        """, [])
+        
+        execute_dml("""
+            CREATE TABLE IF NOT EXISTS latest_price (
+                security TEXT,
+                tstamp TEXT,
+                value INTEGER,
+                high TEXT,
+                low TEXT,
+                volume INTEGER
+            );
+        """, [])
+
+        execute_dml("""
+            CREATE TABLE IF NOT EXISTS price (
+                security TEXT,
+                tstamp TEXT,
+                value INTEGER
+            );
+        """, [])
+
+        execute_dml("""
+            CREATE TABLE IF NOT EXISTS account (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                type TEXT,
+                currency TEXT,
+                uuid TEXT
+            );
+        """, [])
+
+        execute_dml("""
+            CREATE TABLE IF NOT EXISTS transaction (
+                id TEXT PRIMARY KEY,
+                account TEXT,
+                security TEXT,
+                type TEXT,
+                tstamp TEXT,
+                amount INTEGER,
+                shares INTEGER,
+                fee INTEGER,
+                tax INTEGER
+            );
+        """, [])
+    except Exception as e:
+        print(f"Schema auto-build warning: {e}")
+    # --- GLOBAL SCHEMA FALLBACK PATCH END ---
 
     repl_clause = ""
     if or_replace:
