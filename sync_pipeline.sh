@@ -35,9 +35,20 @@ else
 fi
 echo "================================"
 
-# DIAGNOSTIC: Temporarily bypass Step 3 to verify it isn't wiping the database context
-echo "Step 3: [BYPASSED FOR DIAGNOSTICS] Running transaction injection script..."
-# python3 /app/append_transactions.py
+# 3. Run transaction injection script to process and link raw ledger items
+echo "Step 3: Running transaction injection script..."
+python3 /app/append_transactions.py
+
+echo "=== POST-INJECTION AUDIT ==="
+if [ -f /app/temp.db ]; then
+    sqlite3 /app/temp.db "SELECT 'Securities found: ', COUNT(*) FROM security;"
+    sqlite3 /app/temp.db "SELECT 'Accounts found:   ', COUNT(*) FROM account;"
+    sqlite3 /app/temp.db "SELECT 'Transactions found:', COUNT(*) FROM xact;"
+    sqlite3 /app/temp.db "SELECT 'Cross-entries found:', COUNT(*) FROM xact_cross_entry;"
+else
+    echo "Database file temp.db does not exist!"
+fi
+echo "================================="
 
 # 4. Convert the SQLite database back to the original .portfolio file
 echo "Step 4: Compiling SQLite back into .portfolio format..."
