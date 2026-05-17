@@ -71,6 +71,28 @@ def executescript(sql):
 
 
 def insert(table, fields=None, or_replace=False, returning=None, **kw):
+    # --- SAFETY PATCH START ---
+    if table == "latest_price":
+        # Get a temporary cursor from the active database connection
+        # (Assuming 'get_cursor' or 'conn' is available globally in dbhelper.py, 
+        # but if not, executing it directly on the connection works)
+        try:
+            import sqlite3
+            # We execute it safely to ensure the table structure exists
+            execute_dml("""
+                CREATE TABLE IF NOT EXISTS latest_price (
+                    security TEXT,
+                    tstamp TEXT,
+                    value INTEGER,
+                    high TEXT,
+                    low TEXT,
+                    volume INTEGER
+                );
+            """, [])
+        except Exception as e:
+            print(f"Warning during latest_price table creation: {e}")
+    # --- SAFETY PATCH END ---
+
     repl_clause = ""
     if or_replace:
         repl_clause = " OR REPLACE"
