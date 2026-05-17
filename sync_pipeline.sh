@@ -24,8 +24,8 @@ python3 /app/append_transactions.py
 
 # 4. Convert the SQLite database back to the original .portfolio file
 echo "Step 4: Compiling SQLite back into .portfolio format..."
-# FIXED: Removed 'sqlite2portfolio' command argument
-python3 ppxml2db.py /app/temp.db /data/my_wallet.portfolio
+# FIXED: Swapped in the correct db2ppxml compiler script
+python3 db2ppxml.py /app/temp.db /data/my_wallet.portfolio
 
 # 5. Clean up the temporary database
 rm /app/temp.db
