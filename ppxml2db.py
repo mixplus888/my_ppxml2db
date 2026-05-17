@@ -197,8 +197,18 @@ class PortfolioPerformanceXML2DB:
         ren(fields, "id", "_xmlid")
         fields["type"] = "account"
         fields["_order"] = orderno
-        dbhelper.insert("account", fields)
-        self.handle_account_attrs(el, fields["uuid"])
+        
+        # FIXED: Fallback to UUID if inline XML id attribute is missing
+        if not fields.get("_xmlid") or fields.get("_xmlid") == "None":
+            fields["_xmlid"] = fields.get("uuid") or el.findtext("uuid")
+
+        try:
+            dbhelper.insert("account", fields)
+            self.handle_account_attrs(el, fields["uuid"])
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                return # Already ingested, safe to skip duplicate pass
+            raise e
 
     def handle_portfolio(self, el, orderno):
         props = ["uuid", "name", "note", ("isRetired", as_bool), "updatedAt", "id"]
@@ -208,8 +218,18 @@ class PortfolioPerformanceXML2DB:
         fields["referenceAccount"] = self.uuid(acc)
         fields["type"] = "portfolio"
         fields["_order"] = orderno
-        dbhelper.insert("account", fields)
-        self.handle_account_attrs(el, fields["uuid"])
+        
+        # FIXED: Fallback to UUID if inline XML id attribute is missing
+        if not fields.get("_xmlid") or fields.get("_xmlid") == "None":
+            fields["_xmlid"] = fields.get("uuid") or el.findtext("uuid")
+
+        try:
+            dbhelper.insert("account", fields)
+            self.handle_account_attrs(el, fields["uuid"])
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                return # Already ingested, safe to skip duplicate pass
+            raise e
     
     def handle_watchlist(self, el, orderno):
         fields = self.parse_props(el, ["name"])
