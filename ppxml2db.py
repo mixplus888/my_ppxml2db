@@ -520,10 +520,25 @@ class PortfolioPerformanceXML2DB:
     def handle_toplevel_properties(self, el):
         for prop_el in el.findall("entry"):
             d = self.parse_entry(prop_el)
+            # Ensure the entry has at least two parsed elements before asserting types
+            if len(d) < 2 or d[0] is None or d[1] is None:
+                continue
+                
             assert d[0][0] == "string"
             assert d[1][0] == "string"
+            
             fields = {"name": d[0][1], "value": d[1][1]}
-            dbhelper.insert("property", fields)
+            
+            # GUARD 1: Skip if the name is blank, empty, or string literal "None"
+            if not fields.get("name") or str(fields.get("name")).strip() == "" or fields.get("name") == "None":
+                continue
+
+            try:
+                dbhelper.insert("property", fields)
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    continue  # Already processed in a parallel pass, skip safely
+                raise e
 
     def handle_client(self, el):
         props = ["version", "baseCurrency"]
