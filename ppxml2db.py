@@ -643,11 +643,27 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "account-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        # CORRECT: Data transactions must use their own unique transaction UUID
-                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
-                        if lookup_uuid in self.uuid2ctr_map:
-                            assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
-                        self.handle_xact("account", lookup_uuid, el, self.el_order)
+                        # DETERMINISTIC RESOLUTION: Escape the streaming state and find the real parent account
+                        owner_uuid = None
+                        
+                        # Layer 1: Climb the structural DOM tree up to the account tag
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "account":
+                            ancestor = ancestor.getparent()
+                        if ancestor is not None:
+                            owner_uuid = ancestor.get("id") or ancestor.get("uuid") or ancestor.findtext("uuid")
+                        
+                        # Layer 2: Flat reference fallback
+                        if not owner_uuid:
+                            acc_node = el.find("account")
+                            if acc_node is not None:
+                                owner_uuid = acc_node.get("id") or acc_node.get("reference") or acc_node.get("uuid")
+                        
+                        # Layer 3: Disaster recovery fallback
+                        if not owner_uuid:
+                            owner_uuid = self.cur_uuid()
+                            
+                        self.handle_xact("account", owner_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
@@ -663,15 +679,32 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "portfolio-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        # CORRECT: Data transactions must use their own unique transaction UUID
-                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        # DETERMINISTIC RESOLUTION: Escape the streaming state and find the real parent portfolio
+                        owner_uuid = None
                         
+                        # Layer 1: Climb the structural DOM tree up to the portfolio tag
+                        ancestor = el.getparent()
+                        while ancestor is not None and ancestor.tag != "portfolio":
+                            ancestor = ancestor.getparent()
+                        if ancestor is not None:
+                            owner_uuid = ancestor.get("id") or ancestor.get("uuid") or ancestor.findtext("uuid")
+                            
+                        # Layer 2: Flat reference fallback
+                        if not owner_uuid:
+                            port_node = el.find("portfolio")
+                            if port_node is not None:
+                                owner_uuid = port_node.get("id") or port_node.get("reference") or port_node.get("uuid")
+                                
+                        # Layer 3: Disaster recovery fallback
+                        if not owner_uuid:
+                            owner_uuid = self.cur_uuid()
+                            
                         routing_type = "portfolio"
-                        if lookup_uuid in self.uuid2ctr_map:
-                            if not self.uuid2ctr_map[lookup_uuid].startswith("portfolio"):
+                        if owner_uuid in self.uuid2ctr_map:
+                            if not self.uuid2ctr_map[owner_uuid].startswith("portfolio"):
                                 routing_type = "account"
                                 
-                        self.handle_xact(routing_type, lookup_uuid, el, self.el_order)
+                        self.handle_xact(routing_type, owner_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
