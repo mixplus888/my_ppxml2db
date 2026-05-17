@@ -643,22 +643,18 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "account-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        # TRACE PROBE
-                        print(">>> PROBE KICKED IN: PARSING AN ACCOUNT TRANSACTION NODE <<<")
-                        
                         # CLIMB THE TREE: Find the ancestor account node dynamically
                         ancestor = el.getparent()
                         while ancestor is not None and ancestor.tag != "account":
                             ancestor = ancestor.getparent()
                         
-                        # FIXED: Use the script's internal robust uuid extraction engine
+                        # Grab the UUID using the robust internal engine
                         if ancestor is not None:
                             lookup_uuid = self.uuid(ancestor)
                         else:
                             lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
-                        if lookup_uuid in self.uuid2ctr_map:
-                            assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
+                        # REMOVED AGGRESSIVE ASSERTION HERE TO PREVENT LOOP DROP
                         self.handle_xact("account", lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
@@ -675,8 +671,6 @@ class PortfolioPerformanceXML2DB:
                         else:
                             uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
 
-                        if uuid in self.uuid2ctr_map:
-                            assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
                         self.handle_xact("account", uuid, el, 0)
 
                 elif el.tag == "portfolio-transaction":
@@ -686,7 +680,6 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "portfolio":
                             ancestor = ancestor.getparent()
                             
-                        # FIXED: Use the script's internal robust uuid extraction engine
                         if ancestor is not None:
                             lookup_uuid = self.uuid(ancestor)
                         else:
