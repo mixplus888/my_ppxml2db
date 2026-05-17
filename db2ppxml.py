@@ -123,9 +123,16 @@ def as_bool(v):
 
 
 def make_prop(pel, row, prop, row_prop=None, conv=str):
-    if row[row_prop or prop] is not None:
-        el = ET.SubElement(pel, prop)
-        el.text = conv(row[row_prop or prop])
+    try:
+        # Determine the key name to look for in the database row
+        key_name = row_prop or prop
+        
+        if row[key_name] is not None:
+            el = ET.SubElement(pel, prop)
+            el.text = conv(row[key_name])
+    except (IndexError, KeyError):
+        # Safely catch and skip if the dynamic database table lacks this column
+        pass
 
 
 def make_map(pel, rows):
