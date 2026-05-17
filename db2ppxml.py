@@ -293,13 +293,17 @@ def make_portfolio(etree, pel, uuid, el_name="portfolio"):
         make_prop(el, port_r, "name")
         make_prop(el, port_r, "isRetired", conv=as_bool)
         
-        # FIXED: Check if referenceAccount exists and is not 'None' before querying
-        ref_account_uuid = port_r.get("referenceAccount")
+        # FIXED: Extract referenceAccount via safe dictionary indexing to appease sqlite3.Row
+        try:
+            ref_account_uuid = port_r["referenceAccount"]
+        except (KeyError, IndexError, TypeError):
+            ref_account_uuid = None
+
         if ref_account_uuid and str(ref_account_uuid).strip() not in ("", "None"):
             refacc_query = dbhelper.select("account", where="uuid='%s'" % ref_account_uuid)
             if refacc_query:
-                refacc_res = refacc_query[0]  # This is now our row dictionary
-                # FIXED: Pass the dictionary row straight in without treating it like a nested matrix list
+                refacc_res = refacc_query[0]
+                # Pass the row object straight in
                 make_account(etree, el, refacc_res, el_name="referenceAccount")
 
         xacts = ET.SubElement(el, "transactions")
