@@ -74,42 +74,47 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
     if fields is None:
         fields = kw
 
-    # Handle the reserved keyword conflict for the table name
     safe_table = f'"{table}"' if table == "transaction" else table
 
-    # --- DYNAMIC SCHEMA FALLBACK PATCH START ---
+    # 1. First-pass: Bootstrap the table dynamically if it doesn't exist at all
     if fields:
         try:
-            # 1. Dynamically build a list of columns based on whatever Python is inserting
-            columns_schema = []
-            for key in fields.keys():
-                # Wrap column names in quotes just in case they match SQL reserved keywords
-                columns_schema.append(f'"{key}" TEXT')
-            
-            create_columns_sql = ", ".join(columns_schema)
-            
-            # 2. Automatically generate the table with the exact columns needed
-            execute_dml(f'CREATE TABLE IF NOT EXISTS {safe_table} ({create_columns_sql});', [])
+            columns_schema = [f'"{key}" TEXT' for key in fields.keys()]
+            execute_dml(f'CREATE TABLE IF NOT EXISTS {safe_table} ({", ".join(columns_schema)});', [])
         except Exception as e:
-            print(f"Dynamic schema build warning for {table}: {e}")
-    # --- DYNAMIC SCHEMA FALLBACK PATCH END ---
+            print(f"Initial schema build warning for {table}: {e}")
 
-    repl_clause = ""
-    if or_replace:
-        repl_clause = " OR REPLACE"
-        
-    field_names = []
-    field_vals = []
-    qmarks = []
-    for k, v in fields.items():
-        # Wrap field names in quotes so things like "transaction" columns don't break
-        field_names.append(f'"{k}"')
-        field_vals.append(v)
-        qmarks.append(param_mark)
-        
+    # Build the standard SQL statement
+    repl_clause = " OR REPLACE" if or_replace else ""
+    field_names = [f'"{k}"' for k in fields.keys()]
+    field_vals = list(fields.values())
+    qmarks = [param_mark] * len(fields)
     sql = "INSERT%s INTO %s(%s) VALUES (%s)" % (repl_clause, safe_table, ", ".join(field_names), ", ".join(qmarks))
-    id = execute_dml(sql, field_vals, returning)
-    return id
+
+    # 2. Execute with a self-healing retry block for missing columns
+    try:
+        id = execute_dml(sql, field_vals, returning)
+        return id
+    except sqlite3.OperationalError as e:
+        error_msg = str(e)
+        # Check if the error is specifically about a missing column
+        if "has no column named" in error_msg:
+            # Extract the column name from the error string
+            missing_col = error_msg.split("has no column named")[-1].strip()
+            print(f"Patching schema: Adding missing column {missing_col} to table {table}...")
+            
+            try:
+                # Dynamically alter the table layout to inject the new column
+                execute_dml(f'ALTER TABLE {safe_table} ADD COLUMN "{missing_col}" TEXT;', [])
+                # Retry the original insertion now that the schema matches
+                id = execute_dml(sql, field_vals, returning)
+                return id
+            except Exception as retry_err:
+                print(f"Failed to auto-heal schema for {table}: {retry_err}")
+                raise retry_err
+        else:
+            # If it's a completely different SQL error, raise it normally
+            raise e
 
 
 def select(table, where=None, order=None):
