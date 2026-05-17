@@ -11,7 +11,13 @@ echo "Step 1: Checking for new transaction data..."
 # 2. Convert Portfolio Performance XML to SQLite
 echo "Step 2: Converting .portfolio XML to temporary SQLite database..."
 if [ -f /data/my_wallet.portfolio ]; then
-    # FIXED: Removed 'portfolio2sqlite' command argument
+    # 1. Ensure the database file is totally fresh and clear
+    rm -f /app/temp.db
+    
+    # 2. Pre-initialize all native tables (price, account, watchlist, etc.) from blueprints
+    python3 /app/ppxml2db_init.py /app/temp.db
+    
+    # 3. Parse and load the XML records into the structured tables
     python3 ppxml2db.py /data/my_wallet.portfolio /app/temp.db
 else
     echo "ERROR: /data/my_wallet.portfolio not found! Please place your master file in the volume."
