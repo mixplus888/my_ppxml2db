@@ -57,7 +57,7 @@ class PortfolioPerformanceXML2DB:
         if id is None:
             id = el.get("id")
         assert id is not None
-        return self.id2uuid_map[id]
+        return self.id2uuid_map.get(id, None)
 
     @staticmethod
     def is_account_tag(tag):
@@ -183,14 +183,21 @@ class PortfolioPerformanceXML2DB:
         fields["_order"] = orderno
         dbhelper.insert("account", fields)
         self.handle_account_attrs(el, fields["uuid"])
-
+    
     def handle_watchlist(self, el, orderno):
         fields = self.parse_props(el, ["name"])
         fields["_order"] = orderno
         id = dbhelper.insert("watchlist", fields, returning="_id")
         for sec in el.findall("securities/security"):
-            fields = {"list": id, "security": self.uuid(sec)}
-            dbhelper.insert("watchlist_security", fields)
+            # 1. Grab the security UUID safely (can be None now)
+            sec_uuid = self.uuid(sec)
+            
+            # 2. Skip this specific entry if the XML shortcut couldn't be resolved
+            if sec_uuid is None:
+                continue
+                
+            fields = {"list": id, "security": sec_uuid}
+            dbhelper.insert("watchlist_security", fields)   
 
     def handle_xact(self, acc_type, acc_uuid, el, orderno):
         # Start with calculating unit aggregates, to add to xact row in DB.
