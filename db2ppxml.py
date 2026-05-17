@@ -485,15 +485,19 @@ def main():
         wlist.wr_end()
     watchlists.wr_end()
 
-    accounts = ET.SubElement(root, "accounts")
-    for acc_r in dbhelper.select("account", where="type='account'", order="_order"):
-        make_account(etree, accounts, acc_r)
-    accounts.wr_end()
+    # FIXED: Re-named XML tracking elements to accounts_el to protect the lookup loops
+    accounts_el = ET.SubElement(root, "accounts")
+    acc_rows = dbhelper.select("account", where="type='account'", order="_order")
+    for acc_r in acc_rows:
+        make_account(etree, accounts_el, acc_r)
+    accounts_el.wr_end()
 
-    portfolios = ET.SubElement(root, "portfolios")
-    for acc_r in dbhelper.select("account", where="type='portfolio'", order="_order"):
-        make_portfolio(etree, portfolios, acc_r["uuid"])
-    portfolios.wr_end()
+    # FIXED: Re-named XML tracking elements to portfolios_el to protect the lookup loops
+    portfolios_el = ET.SubElement(root, "portfolios")
+    port_rows = dbhelper.select("account", where="type='portfolio'", order="_order")
+    for acc_r in port_rows:
+        make_portfolio(etree, portfolios_el, acc_r["uuid"])
+    portfolios_el.wr_end()
 
     plans = ET.SubElement(root, "plans")
     plans.wr_end()
@@ -510,7 +514,7 @@ def main():
                 ET.SubElement(el, "string").text = taxon_dim_r["value"]
             el.wr_end()
         
-        # FIXED: Safe defensive query check to bypass missing/modern taxonomy tree segments without crashing
+        # FIXED: Safe defensive query check to bypass missing taxonomy trees smoothly
         e_query = dbhelper.select("taxonomy_category", where="uuid='%s'" % taxon_r["root"])
         if e_query:
             e_r = e_query[0]
