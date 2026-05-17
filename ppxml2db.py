@@ -643,8 +643,10 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag == "account-transaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        # Safety check fallback in case parsing stack lookup maps were bypassed
-                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        # FIXED: Find the parent container and get the actual account UUID
+                        parent = el.getparent()
+                        lookup_uuid = self.uuid(parent.find("account")) if parent.find("account") is not None else (el.findtext("uuid") if el.get("id") is None else self.cur_uuid())
+                        
                         if lookup_uuid in self.uuid2ctr_map:
                             assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
                         self.handle_xact("account", lookup_uuid, el, self.el_order)
@@ -662,9 +664,10 @@ class PortfolioPerformanceXML2DB:
 
                 elif el.tag in ("portfolio-transaction",):
                     if el.get("id") or el.find("uuid") is not None:
-                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        # FIXED: Find the parent container and get the actual portfolio UUID
+                        parent = el.getparent()
+                        lookup_uuid = self.uuid(parent.find("portfolio")) if parent.find("portfolio") is not None else (el.findtext("uuid") if el.get("id") is None else self.cur_uuid())
                         
-                        # FIXED: Dynamically resolve target container routing type instead of crashing on assertions
                         routing_type = "portfolio"
                         if lookup_uuid in self.uuid2ctr_map:
                             if not self.uuid2ctr_map[lookup_uuid].startswith("portfolio"):
@@ -680,7 +683,6 @@ class PortfolioPerformanceXML2DB:
                         parent = el.getparent()
                         uuid = self.uuid(parent.find("portfolio"))
                         
-                        # FIXED: Dynamically resolve target container routing type instead of crashing on assertions
                         routing_type = "portfolio"
                         if uuid in self.uuid2ctr_map:
                             if not self.uuid2ctr_map[uuid].startswith("portfolio"):
