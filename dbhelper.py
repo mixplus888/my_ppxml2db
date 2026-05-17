@@ -73,7 +73,7 @@ def executescript(sql):
 def insert(table, fields=None, or_replace=False, returning=None, **kw):
     # --- GLOBAL SCHEMA FALLBACK PATCH START ---
     try:
-        # If a core table like 'security' doesn't exist, build the entire schema at once
+        # 1. Added uuid column to match your portfolio requirements
         execute_dml("""
             CREATE TABLE IF NOT EXISTS security (
                 id TEXT PRIMARY KEY,
@@ -82,7 +82,8 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
                 ticker TEXT,
                 wkn TEXT,
                 feed TEXT,
-                note TEXT
+                note TEXT,
+                uuid TEXT
             );
         """, [])
         
@@ -115,8 +116,9 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
             );
         """, [])
 
+        # 2. Wrapped "transaction" in double-quotes to bypass SQLite keyword conflict
         execute_dml("""
-            CREATE TABLE IF NOT EXISTS transaction (
+            CREATE TABLE IF NOT EXISTS "transaction" (
                 id TEXT PRIMARY KEY,
                 account TEXT,
                 security TEXT,
@@ -144,7 +146,11 @@ def insert(table, fields=None, or_replace=False, returning=None, **kw):
         field_names.append(k)
         field_vals.append(v)
         qmarks.append(param_mark)
-    sql = "INSERT%s INTO %s(%s) VALUES (%s)" % (repl_clause, table, ", ".join(field_names), ", ".join(qmarks))
+        
+    # 3. Handle table names that are reserved keywords in the final SQL builder too
+    safe_table = f'"{table}"' if table == "transaction" else table
+    
+    sql = "INSERT%s INTO %s(%s) VALUES (%s)" % (repl_clause, safe_table, ", ".join(field_names), ", ".join(qmarks))
     id = execute_dml(sql, field_vals, returning)
     return id
 
