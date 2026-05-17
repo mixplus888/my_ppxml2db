@@ -125,7 +125,15 @@ class PortfolioPerformanceXML2DB:
             latest_fields = self.parse_props(latest_el, props)
             ren(latest_fields, "v", "value")
             ren(latest_fields, "t", "tstamp")
-            latest_fields["security"] = self.cur_uuid()
+            
+            # Dynamically grab the parent context security ID
+            sec_id = self.cur_uuid()
+            
+            # FIXED: Safeguard against empty parent contexts or untracked assets
+            if sec_id is None:
+                return
+
+            latest_fields["security"] = sec_id
             dbhelper.insert("latest_price", latest_fields)
 
     def handle_event(self, event_el):
