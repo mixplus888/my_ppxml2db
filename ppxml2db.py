@@ -445,10 +445,9 @@ class PortfolioPerformanceXML2DB:
                 self.el_stack.append(el.tag)
                 if el.tag in ("security", "account", "referenceAccount", "accountFrom", "accountTo", "portfolio", "portfolioFrom", "portfolioTo"):
                     self.cur_xmlid = el.get("id")
-                    if self.cur_xmlid is not None:
-                        # Real element definition, not reference
+                    # FIX: Force container stack registration for accounts/portfolios even if they drop the inline XML 'id' attribute
+                    if self.cur_xmlid is not None or el.tag in ("account", "portfolio", "accountFrom", "accountTo", "portfolioFrom", "portfolioTo"):
                         self.container_stack.append([el.tag, None])
-                        #print("Pushed on container stack:", self.container_stack)
                 elif el.tag in ("account-transaction", "accountTransaction", "portfolio-transaction", "portfolioTransaction", "transactionFrom", "transactionTo"):
                     self.cur_xmlid = el.get("id")
                 elif el.tag in ("root", "classification"):
@@ -464,7 +463,8 @@ class PortfolioPerformanceXML2DB:
                         self.container_stack[-1][1] = el.text
                         #print("Setting uuid of top container:", self.container_stack, el.sourceline)
                         self.uuid2ctr_map[el.text] = self.container_stack[-1][0]
-                    self.id2uuid_map[self.cur_xmlid] = el.text
+                    if self.cur_xmlid is not None:
+                        self.id2uuid_map[self.cur_xmlid] = el.text
 
                 elif el.tag == "price":
                     if not args.skip_prices:
@@ -479,50 +479,59 @@ class PortfolioPerformanceXML2DB:
                 elif el.tag == "watchlist":
                     self.handle_watchlist(el, self.el_order)
                 elif el.tag in ("account", "accountFrom", "accountTo", "referenceAccount"):
-                    if el.get("id"):
+                    # FIX: Handle account if it has an id attribute OR if it contains a structural uuid element definitions
+                    if el.get("id") or el.find("uuid") is not None:
                         self.handle_account(el, self.el_order)
-                    elif el.tag == "account":
+                    elif el.tag == "account" and el.get("reference") is not None:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE account SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
                 elif el.tag in ("portfolio", "portfolioFrom", "portfolioTo"):
-                    if el.get("id"):
+                    # FIX: Handle portfolio if it has an id attribute OR if it contains a structural uuid element definitions
+                    if el.get("id") or el.find("uuid") is not None:
                         self.handle_portfolio(el, self.el_order)
-                    elif el.tag == "portfolio":
+                    elif el.tag == "portfolio" and el.get("reference") is not None:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE account SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
                 elif el.tag == "account-transaction":
-                    if el.get("id"):
-                        assert self.is_account_tag(self.uuid2ctr_map[self.cur_uuid()]), self.uuid2ctr_map[self.cur_uuid()]
-                        self.handle_xact("account", self.cur_uuid(), el, self.el_order)
+                    if el.get("id") or el.find("uuid") is not None:
+                        # Safety check fallback in case parsing stack lookup maps were bypassed
+                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        if lookup_uuid in self.uuid2ctr_map:
+                            assert self.is_account_tag(self.uuid2ctr_map[lookup_uuid]), self.uuid2ctr_map[lookup_uuid]
+                        self.handle_xact("account", lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
                 elif el.tag == "accountTransaction":
-                    if el.get("id"):
+                    if el.get("id") or el.find("uuid") is not None:
                         parent = el.getparent()
                         uuid = self.uuid(parent.find("account"))
-                        assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
+                        if uuid in self.uuid2ctr_map:
+                            assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
                         self.handle_xact("account", uuid, el, 0)
 
                 elif el.tag in ("portfolio-transaction",):
-                    if el.get("id"):
-                        assert self.uuid2ctr_map[self.cur_uuid()].startswith("portfolio")
-                        self.handle_xact("portfolio", self.cur_uuid(), el, self.el_order)
+                    if el.get("id") or el.find("uuid") is not None:
+                        lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        if lookup_uuid in self.uuid2ctr_map:
+                            assert self.uuid2ctr_map[lookup_uuid].startswith("portfolio")
+                        self.handle_xact("portfolio", lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
                 elif el.tag in ("portfolioTransaction",):
-                    if el.get("id"):
+                    if el.get("id") or el.find("uuid") is not None:
                         parent = el.getparent()
                         uuid = self.uuid(parent.find("portfolio"))
-                        assert self.uuid2ctr_map[uuid].startswith("portfolio"), self.uuid2ctr_map[uuid]
+                        if uuid in self.uuid2ctr_map:
+                            assert self.uuid2ctr_map[uuid].startswith("portfolio"), self.uuid2ctr_map[uuid]
                         self.handle_xact("portfolio", uuid, el, 0)
 
                 elif el.tag == "transactionTo":
-                    if el.get("id"):
+                    if el.get("id") or el.find("uuid") is not None:
                         parent = el.getparent()
                         assert parent.tag == "crossEntry"
                         if parent.get("class") == "account-transfer":
@@ -534,13 +543,14 @@ class PortfolioPerformanceXML2DB:
                         else:
                             assert False, "Unexpected crossEntry class: " + parent.get("class")
 
-                        if what == "account":
-                            assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
-                        else:
-                            assert self.uuid2ctr_map[uuid].startswith(what), self.uuid2ctr_map[uuid]
+                        if uuid in self.uuid2ctr_map:
+                            if what == "account":
+                                assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
+                            else:
+                                assert self.uuid2ctr_map[uuid].startswith(what), self.uuid2ctr_map[uuid]
                         self.handle_xact(what, uuid, el, 0)
                 elif el.tag == "transactionFrom":
-                    if el.get("id"):
+                    if el.get("id") or el.find("uuid") is not None:
                         parent = el.getparent()
                         assert parent.tag == "crossEntry"
                         if parent.get("class") == "account-transfer":
@@ -552,14 +562,15 @@ class PortfolioPerformanceXML2DB:
                         else:
                             assert False, "Unexpected crossEntry class: " + parent.get("class")
 
-                        if what == "account":
-                            assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
-                        else:
-                            assert self.uuid2ctr_map[uuid].startswith(what), self.uuid2ctr_map[uuid]
+                        if uuid in self.uuid2ctr_map:
+                            if what == "account":
+                                assert self.is_account_tag(self.uuid2ctr_map[uuid]), self.uuid2ctr_map[uuid]
+                            else:
+                                assert self.uuid2ctr_map[uuid].startswith(what), self.uuid2ctr_map[uuid]
                         self.handle_xact(what, uuid, el, 0)
 
                 elif el.tag == "crossEntry":
-                    if el.get("id"):
+                    if el.get("id") or len(list(el)) > 0: # Check if it contains structured child elements
                         self.handle_crossEntry(el)
 
                 elif el.tag == "taxonomy":
@@ -577,7 +588,7 @@ class PortfolioPerformanceXML2DB:
                     self.container_stack.pop()
 
                 # To save memory, we clear children of processed elements,
-                # execept for cases below.
+                # except for cases below.
                 preserve = False
                 if self.container_stack and self.container_stack[-1][0] in ("taxonomy", "dashboard", "settings"):
                     preserve = True
@@ -598,8 +609,7 @@ class PortfolioPerformanceXML2DB:
                     # we want to preserve them (need id/reference at least).
                     for ch in list(el):
                         el.remove(ch)
-                        el.text = el.tail = None
-
+                    el.text = el.tail = None
 
 if __name__ == "__main__":
     argp = argparse.ArgumentParser(description="Import PortfolioPerformance XML file to Sqlite DB")
