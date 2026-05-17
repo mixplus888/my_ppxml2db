@@ -24,6 +24,18 @@ else
     exit 1
 fi
 
+# === DROP THIS AUDIT BLOCK DIRECTLY BETWEEN STEP 2 AND STEP 3 ===
+echo "=== DATABASE INGESTION AUDIT ==="
+if [ -f /app/temp.db ]; then
+    sqlite3 /app/temp.db "SELECT 'Securities found: ', COUNT(*) FROM security;"
+    sqlite3 /app/temp.db "SELECT 'Accounts found:   ', COUNT(*) FROM account;"
+    sqlite3 /app/temp.db "SELECT 'Transactions found:', COUNT(*) FROM xact;"
+    sqlite3 /app/temp.db "SELECT 'Cross-entries found:', COUNT(*) FROM xact_cross_entry;"
+else
+    echo "Database file temp.db does not exist!"
+fi
+echo "================================"
+
 # 3. Run the Python appender
 echo "Step 3: Running transaction injection script..."
 python3 /app/append_transactions.py
