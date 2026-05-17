@@ -317,37 +317,57 @@ class PortfolioPerformanceXML2DB:
                 raise e
 
     def handle_crossEntry(self, x_el):
-            if x_el.get("reference") is not None:
-                return
+        if x_el.get("reference") is not None:
+            return
 
-            typ = x_el.get("class")
-            if typ == "buysell":
-                fields = {
-                    "type": typ,
-                    "from_acc": self.uuid(x_el.find("portfolio")),
-                    "from_xact": self.uuid(x_el.find("portfolioTransaction")),
-                    "to_acc": self.uuid(x_el.find("account")),
-                    "to_xact": self.uuid(x_el.find("accountTransaction")),
-                }
-            elif typ == "account-transfer":
-                fields = {
-                    "type": typ,
-                    "from_acc": self.uuid(x_el.find("accountFrom")),
-                    "from_xact": self.uuid(x_el.find("transactionFrom")),
-                    "to_acc": self.uuid(x_el.find("accountTo")),
-                    "to_xact": self.uuid(x_el.find("transactionTo")),
-                }
-            elif typ == "portfolio-transfer":
-                fields = {
-                    "type": typ,
-                    "from_acc": self.uuid(x_el.find("portfolioFrom")),
-                    "from_xact": self.uuid(x_el.find("transactionFrom")),
-                    "to_acc": self.uuid(x_el.find("portfolioTo")),
-                    "to_xact": self.uuid(x_el.find("transactionTo")),
-                }
+        typ = x_el.get("class")
+        if typ == "buysell":
+            fields = {
+                "type": typ,
+                "from_acc": self.uuid(x_el.find("portfolio")),
+                "from_xact": self.uuid(x_el.find("portfolioTransaction")),
+                "to_acc": self.uuid(x_el.find("account")),
+                "to_xact": self.uuid(x_el.find("accountTransaction")),
+            }
+        elif typ == "account-transfer":
+            fields = {
+                "type": typ,
+                "from_acc": self.uuid(x_el.find("accountFrom")),
+                "from_xact": self.uuid(x_el.find("transactionFrom")),
+                "to_acc": self.uuid(x_el.find("accountTo")),
+                "to_xact": self.uuid(x_el.find("transactionTo")),
+            }
+        elif typ == "portfolio-transfer":
+            fields = {
+                "type": typ,
+                "from_acc": self.uuid(x_el.find("portfolioFrom")),
+                "from_xact": self.uuid(x_el.find("transactionFrom")),
+                "to_acc": self.uuid(x_el.find("portfolioTo")),
+                "to_xact": self.uuid(x_el.find("transactionTo")),
+            }
+        else:
+            raise NotImplementedError(typ)
+
+        # GUARD 1: Safely drop the element if either critical account mapping is missing or unparsed yet
+        if not fields.get("from_acc") or not fields.get("to_acc"):
+            return
+
+        # GUARD 2: Ensure a unique identifier key exists for the schema record
+        if not fields.get("uuid"):
+            # Check if an xml id or internal tracking tag attribute is available
+            xml_id = x_el.get("id")
+            if xml_id and hasattr(self, "id2uuid_map") and xml_id in self.id2uuid_map:
+                fields["uuid"] = self.id2uuid_map[xml_id]
             else:
-                raise NotImplementedError(typ)
+                import uuid
+                fields["uuid"] = str(uuid.uuid4())
+
+        try:
             dbhelper.insert("xact_cross_entry", fields)
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                return  # Record was already captured via a matching parallel event loop pass
+            raise e
 
     def handle_taxonomy(self, taxon_el):
         props = ["id", "name"]
