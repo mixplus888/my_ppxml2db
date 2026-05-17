@@ -188,8 +188,21 @@ class PortfolioPerformanceXML2DB:
     def handle_account_attrs(self, pel, uuid):
         for fields in self.parse_attributes(pel):
             fields["account"] = uuid
-            dbhelper.insert("account_attr", fields)
+            
+            # FIXED: Handle missing attr_uuid to prevent SQLite NOT NULL crashes
+            if not fields.get("attr_uuid") or str(fields.get("attr_uuid")) == "None":
+                import hashlib
+                # Create a stable, deterministic ID unique to this account and attribute combination
+                seed = f"{uuid}_{fields.get('name', 'default')}"
+                fields["attr_uuid"] = hashlib.md5(seed.encode('utf-8')).hexdigest()
 
+            try:
+                dbhelper.insert("account_attr", fields)
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    continue  # Already inserted in an overlapping pass, skip gracefully
+                raise e
+            
     def handle_account(self, el, orderno):
         props = ["uuid", "name", "currencyCode", "note", ("isRetired", as_bool), "updatedAt", "id"]
         fields = self.parse_props(el, props)
