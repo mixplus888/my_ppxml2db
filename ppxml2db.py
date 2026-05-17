@@ -53,10 +53,13 @@ class PortfolioPerformanceXML2DB:
         return d
 
     def uuid(self, el):
-        id = el.get("reference")
+        # Try grabbing 'reference' first; if missing, fall back to 'id'
+        id = el.get("reference") or el.get("id")
+        
+        # If both are missing, safely return None right away
         if id is None:
-            id = el.get("id")
-        assert id is not None
+            return None
+            
         return self.id2uuid_map.get(id, None)
 
     @staticmethod
@@ -283,20 +286,29 @@ class PortfolioPerformanceXML2DB:
             dbhelper.insert("xact_cross_entry", fields)
 
     def handle_taxonomy(self, taxon_el):
-            props = ["id", "name"]
-            fields = self.parse_props(taxon_el, props)
-            ren(fields, "id", "uuid")
-            for dim_els in taxon_el.findall("dimensions/string"):
-                dim_fields = {
-                    "taxonomy": fields["uuid"],
-                    "name": "dimension",
-                    "value": dim_els.text,
-                }
-                dbhelper.insert("taxonomy_data", dim_fields)
-            root_el = taxon_el.find("root")
-            fields["root"] = self.uuid(root_el)
-            dbhelper.insert("taxonomy", fields)
-            self.handle_taxonomy_level(fields["uuid"], None, root_el)
+        props = ["id", "name"]
+        fields = self.parse_props(taxon_el, props)
+        ren(fields, "id", "uuid")
+        
+        for dim_els in taxon_el.findall("dimensions/string"):
+            dim_fields = {
+                "taxonomy": fields["uuid"],
+                "name": "dimension",
+                "value": dim_els.text,
+            }
+            dbhelper.insert("taxonomy_data", dim_fields)
+            
+        root_el = taxon_el.find("root")
+        root_uuid = self.uuid(root_el)
+        
+        # FIXED: Safeguard against missing or unresolvable root structures
+        if root_uuid is None:
+            print(f"Warning: Skipping unresolvable taxonomy root for category '{fields.get('name', 'Unknown')}'")
+            return
+
+        fields["root"] = root_uuid
+        dbhelper.insert("taxonomy", fields)
+        self.handle_taxonomy_level(fields["uuid"], None, root_el)
 
     def handle_taxonomy_level(self, taxon_uuid, parent_uuid, level_el):
         props = ["id", "name", "color", "weight", "rank"]
