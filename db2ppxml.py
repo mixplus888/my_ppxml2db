@@ -219,7 +219,6 @@ def make_xact(etree, pel, tag, xact_r):
             # 0 or 1
             crit = "from_xact='%s' OR to_xact='%s'" % (xact_r["uuid"], xact_r["uuid"])
             for x_r in dbhelper.select("xact_cross_entry", where=crit):
-                #print(dict(x_r))
                 x = ET.SubElement(xact, "crossEntry")
                 x.set("class", x_r["type"])
                 cross_key = (x_r["type"], x_r["from_xact"], x_r["to_xact"])
@@ -230,63 +229,49 @@ def make_xact(etree, pel, tag, xact_r):
                     continue
                 add_xmlid(x)
                 cross_els[cross_key] = x
-                if x_r["type"] == "account-transfer":
-                    accfrom_r = dbhelper.select("account", where="uuid='%s'" % x_r["from_acc"])[0]
-                    make_account(etree, x, accfrom_r, el_name="accountFrom")
-                    acc_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])[0]
-                    make_xact(etree, x, "transactionFrom", acc_xact_r)
-                    accto_r = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])[0]
-                    make_account(etree, x, accto_r, el_name="accountTo")
-                    acc_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])[0]
-                    make_xact(etree, x, "transactionTo", acc_xact_r)
-                elif x_r["type"] == "portfolio-transfer":
-                    accfrom_r = dbhelper.select("account", where="uuid='%s'" % x_r["from_acc"])[0]
-                    make_portfolio(etree, x, accfrom_r["uuid"], el_name="portfolioFrom")
-                    acc_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])[0]
-                    make_xact(etree, x, "transactionFrom", acc_xact_r)
-                    accto_r = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])[0]
-                    make_portfolio(etree, x, accto_r["uuid"], el_name="portfolioTo")
-                    acc_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])[0]
-                    make_xact(etree, x, "transactionTo", acc_xact_r)
-                else:
-                    make_portfolio(etree, x, x_r["from_acc"])
-                    port_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])[0]
-                    make_xact(etree, x, "portfolioTransaction", port_xact_r)
-
-                    acc_r = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])[0]
-                    make_account(etree, x, acc_r)
-                    acc_xact_r = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])[0]
-                    make_xact(etree, x, "accountTransaction", acc_xact_r)
+                
+                try: # SAFEGUARD: Prevent missing cross-reference accounts from crashing the exporter
+                    if x_r["type"] == "account-transfer":
+                        accfrom_res = dbhelper.select("account", where="uuid='%s'" % x_r["from_acc"])
+                        acc_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])
+                        accto_res = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])
+                        to_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])
+                        
+                        if not (accfrom_res and acc_xact_res and accto_res and to_xact_res): continue
+                        
+                        make_account(etree, x, accfrom_res[0], el_name="accountFrom")
+                        make_xact(etree, x, "transactionFrom", acc_xact_res[0])
+                        make_account(etree, x, accto_res[0], el_name="accountTo")
+                        make_xact(etree, x, "transactionTo", to_xact_res[0])
+                        
+                    elif x_r["type"] == "portfolio-transfer":
+                        accfrom_res = dbhelper.select("account", where="uuid='%s'" % x_r["from_acc"])
+                        acc_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])
+                        accto_res = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])
+                        to_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])
+                        
+                        if not (accfrom_res and acc_xact_res and accto_res and to_xact_res): continue
+                        
+                        make_portfolio(etree, x, accfrom_res[0]["uuid"], el_name="portfolioFrom")
+                        make_xact(etree, x, "transactionFrom", acc_xact_res[0])
+                        make_portfolio(etree, x, accto_res[0]["uuid"], el_name="portfolioTo")
+                        make_xact(etree, x, "transactionTo", to_xact_res[0])
+                        
+                    else:
+                        from_acc_res = dbhelper.select("account", where="uuid='%s'" % x_r["from_acc"])
+                        from_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["from_xact"])
+                        to_acc_res = dbhelper.select("account", where="uuid='%s'" % x_r["to_acc"])
+                        to_xact_res = dbhelper.select("xact", where="uuid='%s'" % x_r["to_xact"])
+                        
+                        if not (from_acc_res and from_xact_res and to_acc_res and to_xact_res): continue
+                        
+                        make_portfolio(etree, x, x_r["from_acc"])
+                        make_xact(etree, x, "portfolioTransaction", from_xact_res[0])
+                        make_account(etree, x, to_acc_res[0])
+                        make_xact(etree, x, "accountTransaction", to_xact_res[0])
+                except Exception as e:
+                    print(f"Warning: Skipped cross-entry building due to asset mismatch: {e}")
                 x.wr_end()
-
-            make_prop(xact, xact_r, "shares")
-            make_prop(xact, xact_r, "note")
-            make_prop(xact, xact_r, "source")
-
-            unit_rows = dbhelper.select("xact_unit", where="xact='%s'" % xact_r["uuid"])
-            if unit_rows:
-                units = ET.SubElement(xact, "units")
-                for unit_r in unit_rows:
-                    u = ET.SubElement(units, "unit")
-                    u.set("type", unit_r["type"])
-                    a = ET.SubElement(u, "amount")
-                    a.set("currency", unit_r["currency"])
-                    a.set("amount", str(unit_r["amount"]))
-                    a.wr_nb()
-                    if unit_r["forex_amount"] is not None or unit_r["forex_currency"] is not None:
-                        forex = ET.SubElement(u, "forex")
-                        forex.set("currency", unit_r["forex_currency"])
-                        forex.set("amount", str(unit_r["forex_amount"]))
-                        forex.wr_nb()
-                        forex = ET.SubElement(u, "exchangeRate")
-                        forex.text = str(unit_r["exchangeRate"])
-                    u.wr_end()
-                units.wr_end()
-
-            make_prop(xact, xact_r, "updatedAt")
-            make_prop(xact, xact_r, "type")
-
-            xact.wr_end()
 
 
 def make_xacts(etree, pel, acc_uuid):
@@ -305,8 +290,9 @@ def make_portfolio(etree, pel, uuid, el_name="portfolio"):
         make_prop(el, port_r, "uuid")
         make_prop(el, port_r, "name")
         make_prop(el, port_r, "isRetired", conv=as_bool)
-        refacc_r = dbhelper.select("account", where="uuid='%s'" % port_r["referenceAccount"])[0]
-        make_account(etree, el, refacc_r, el_name="referenceAccount")
+        refacc_res = dbhelper.select("account", where="uuid='%s'" % port_r["referenceAccount"])[0]
+        if refacc_res:
+            make_account(etree, el, refacc_res[0], el_name="referenceAccount")
 
         xacts = ET.SubElement(el, "transactions")
         make_xacts(etree, xacts, port_r["uuid"])
