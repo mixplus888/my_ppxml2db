@@ -407,7 +407,7 @@ def main():
     securities = ET.SubElement(root, "securities")
 
     for i, sec_r in enumerate(dbhelper.select("security")):
-    #    print(dict(sec_r))
+    #     print(dict(sec_r))
         sec_map[sec_r["uuid"]] = i
         sec = ET_SubElementWId(securities, "security", sec_r["uuid"])
         output_els[sec_r["uuid"]] = sec
@@ -509,8 +509,13 @@ def main():
             for taxon_dim_r in taxon_dim_rows:
                 ET.SubElement(el, "string").text = taxon_dim_r["value"]
             el.wr_end()
-        e_r = dbhelper.select("taxonomy_category", where="uuid='%s'" % taxon_r["root"])[0]
-        make_taxonomy_level(etree, taxon, e_r)
+        
+        # FIXED: Safe defensive query check to bypass missing/modern taxonomy tree segments without crashing
+        e_query = dbhelper.select("taxonomy_category", where="uuid='%s'" % taxon_r["root"])
+        if e_query:
+            e_r = e_query[0]
+            make_taxonomy_level(etree, taxon, e_r)
+        
         taxon.wr_end()
     taxonomies.wr_end()
 
