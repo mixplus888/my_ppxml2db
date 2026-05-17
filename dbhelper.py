@@ -71,85 +71,42 @@ def executescript(sql):
 
 
 def insert(table, fields=None, or_replace=False, returning=None, **kw):
-    # --- GLOBAL SCHEMA FALLBACK PATCH START ---
-    try:
-        # 1. Added uuid column to match your portfolio requirements
-        execute_dml("""
-            CREATE TABLE IF NOT EXISTS security (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                isin TEXT,
-                ticker TEXT,
-                wkn TEXT,
-                feed TEXT,
-                note TEXT,
-                uuid TEXT
-            );
-        """, [])
-        
-        execute_dml("""
-            CREATE TABLE IF NOT EXISTS latest_price (
-                security TEXT,
-                tstamp TEXT,
-                value INTEGER,
-                high TEXT,
-                low TEXT,
-                volume INTEGER
-            );
-        """, [])
+    if fields is None:
+        fields = kw
 
-        execute_dml("""
-            CREATE TABLE IF NOT EXISTS price (
-                security TEXT,
-                tstamp TEXT,
-                value INTEGER
-            );
-        """, [])
+    # Handle the reserved keyword conflict for the table name
+    safe_table = f'"{table}"' if table == "transaction" else table
 
-        execute_dml("""
-            CREATE TABLE IF NOT EXISTS account (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                type TEXT,
-                currency TEXT,
-                uuid TEXT
-            );
-        """, [])
-
-        # 2. Wrapped "transaction" in double-quotes to bypass SQLite keyword conflict
-        execute_dml("""
-            CREATE TABLE IF NOT EXISTS "transaction" (
-                id TEXT PRIMARY KEY,
-                account TEXT,
-                security TEXT,
-                type TEXT,
-                tstamp TEXT,
-                amount INTEGER,
-                shares INTEGER,
-                fee INTEGER,
-                tax INTEGER
-            );
-        """, [])
-    except Exception as e:
-        print(f"Schema auto-build warning: {e}")
-    # --- GLOBAL SCHEMA FALLBACK PATCH END ---
+    # --- DYNAMIC SCHEMA FALLBACK PATCH START ---
+    if fields:
+        try:
+            # 1. Dynamically build a list of columns based on whatever Python is inserting
+            columns_schema = []
+            for key in fields.keys():
+                # Wrap column names in quotes just in case they match SQL reserved keywords
+                columns_schema.append(f'"{key}" TEXT')
+            
+            create_columns_sql = ", ".join(columns_schema)
+            
+            # 2. Automatically generate the table with the exact columns needed
+            execute_dml(f'CREATE TABLE IF NOT EXISTS {safe_table} ({create_columns_sql});', [])
+        except Exception as e:
+            print(f"Dynamic schema build warning for {table}: {e}")
+    # --- DYNAMIC SCHEMA FALLBACK PATCH END ---
 
     repl_clause = ""
     if or_replace:
         repl_clause = " OR REPLACE"
-    if fields is None:
-        fields = kw
+        
     field_names = []
     field_vals = []
     qmarks = []
     for k, v in fields.items():
-        field_names.append(k)
+        # Wrap field names in quotes so things like "transaction" columns don't break
+        field_names.append(f'"{k}"')
         field_vals.append(v)
         qmarks.append(param_mark)
         
-    # 3. Handle table names that are reserved keywords in the final SQL builder too
-    safe_table = f'"{table}"' if table == "transaction" else table
-    
     sql = "INSERT%s INTO %s(%s) VALUES (%s)" % (repl_clause, safe_table, ", ".join(field_names), ", ".join(qmarks))
     id = execute_dml(sql, field_vals, returning)
     return id
