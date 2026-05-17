@@ -648,29 +648,24 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "account":
                             ancestor = ancestor.getparent()
                         
-                        # Grab the UUID using the robust internal engine
+                        # EXTRACT ID: Check attributes first, then fallback to text elements
                         if ancestor is not None:
-                            lookup_uuid = self.uuid(ancestor)
+                            lookup_uuid = ancestor.get("uuid") or ancestor.get("id") or ancestor.findtext("uuid") or ancestor.findtext("id")
+                            if not lookup_uuid:
+                                lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         else:
                             lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
-                        # REMOVED AGGRESSIVE ASSERTION HERE TO PREVENT LOOP DROP
                         self.handle_xact("account", lookup_uuid, el, self.el_order)
                     else:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
-                elif el.tag in ("accountTransaction", "accounttransaction"):
+                elif el.tag == "accountTransaction":
                     if el.get("id") or el.find("uuid") is not None:
-                        ancestor = el.getparent()
-                        while ancestor is not None and ancestor.tag != "account":
-                            ancestor = ancestor.getparent()
-                            
-                        if ancestor is not None:
-                            uuid = self.uuid(ancestor)
-                        else:
-                            uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
-
+                        parent = el.getparent()
+                        account_node = parent.find("account")
+                        uuid = self.uuid(account_node) if account_node is not None else self.cur_uuid()
                         self.handle_xact("account", uuid, el, 0)
 
                 elif el.tag == "portfolio-transaction":
@@ -680,8 +675,11 @@ class PortfolioPerformanceXML2DB:
                         while ancestor is not None and ancestor.tag != "portfolio":
                             ancestor = ancestor.getparent()
                             
+                        # EXTRACT ID: Check attributes first, then fallback to text elements
                         if ancestor is not None:
-                            lookup_uuid = self.uuid(ancestor)
+                            lookup_uuid = ancestor.get("uuid") or ancestor.get("id") or ancestor.findtext("uuid") or ancestor.findtext("id")
+                            if not lookup_uuid:
+                                lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         else:
                             lookup_uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
                         
@@ -695,16 +693,11 @@ class PortfolioPerformanceXML2DB:
                         xmlid = el.get("reference")
                         dbhelper.execute_dml("UPDATE xact SET _order=? WHERE _xmlid=?", (self.el_order, xmlid))
 
-                elif el.tag in ("portfolioTransaction", "portfoliotransaction"):
+                elif el.tag in ("portfolioTransaction",):
                     if el.get("id") or el.find("uuid") is not None:
-                        ancestor = el.getparent()
-                        while ancestor is not None and ancestor.tag != "portfolio":
-                            ancestor = ancestor.getparent()
-                            
-                        if ancestor is not None:
-                            uuid = self.uuid(ancestor)
-                        else:
-                            uuid = el.findtext("uuid") if el.get("id") is None else self.cur_uuid()
+                        parent = el.getparent()
+                        port_node = parent.find("portfolio")
+                        uuid = self.uuid(port_node) if port_node is not None else self.cur_uuid()
                         
                         routing_type = "portfolio"
                         if uuid in self.uuid2ctr_map:
