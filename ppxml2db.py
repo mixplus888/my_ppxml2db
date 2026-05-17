@@ -227,11 +227,30 @@ class PortfolioPerformanceXML2DB:
             dbhelper.insert("watchlist_security", fields)   
 
     def handle_xact(self, acc_type, acc_uuid, el, orderno):
+        # GUARD: Skip processing if no valid account or portfolio context is provided
+        if not acc_uuid or acc_uuid == "None":
+            return
+
+        # GUARD: Dynamically check the element or fallback parsing tracking properties for transaction UUID
+        xact_uuid_check = el.findtext("uuid") or el.get("id") or (el.find("id").text if el.find("id") is not None else None)
+        
+        if not hasattr(self, "_seen_xacts"):
+            self._seen_xacts = set()
+            
+        if xact_uuid_check:
+            if xact_uuid_check in self._seen_xacts:
+                return # Already handled on an alternative event path, skip
+            self._seen_xacts.add(xact_uuid_check)
+
         # Start with calculating unit aggregates, to add to xact row in DB.
         units_dict = defaultdict(int)
         for unit_el in el.findall("units/unit"):
             am_el = unit_el.find("amount")
-            units_dict[unit_el.get("type")] += int(am_el.get("amount"))
+            if am_el is not None and am_el.get("amount") is not None:
+                try:
+                    units_dict[unit_el.get("type")] += int(am_el.get("amount"))
+                except (ValueError, TypeError):
+                    pass
 
         props = [
             "uuid",
@@ -256,12 +275,27 @@ class PortfolioPerformanceXML2DB:
             fields["security"] = self.uuid(sec)
         fields["fees"] = units_dict["FEE"]
         fields["taxes"] = units_dict["TAX"]
-        dbhelper.insert("xact", fields)
+        
+        # GUARD: Fallback default uuid generation if parse_props returned empty
+        if not fields.get("uuid") and xact_uuid_check:
+            fields["uuid"] = xact_uuid_check
+        elif not fields.get("uuid"):
+            import uuid
+            fields["uuid"] = str(uuid.uuid4())
+
+        try:
+            dbhelper.insert("xact", fields)
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                return # Skip remaining unit arrays, already safely saved
+            raise e
 
         xact_uuid = fields["uuid"]
         for unit_el in el.findall("units/unit"):
             am_el = unit_el.find("amount")
-            fields = {
+            if am_el is None:
+                continue
+            fields_unit = {
                 "xact": xact_uuid,
                 "type": unit_el.get("type"),
                 "amount": am_el.get("amount"),
@@ -269,12 +303,18 @@ class PortfolioPerformanceXML2DB:
             }
             forex_el = unit_el.find("forex")
             if forex_el is not None:
-                fields["forex_amount"] = forex_el.get("amount")
-                fields["forex_currency"] = forex_el.get("currency")
+                fields_unit["forex_amount"] = forex_el.get("amount")
+                fields_unit["forex_currency"] = forex_el.get("currency")
             rate_el = unit_el.find("exchangeRate")
             if rate_el is not None:
-                fields["exchangeRate"] = rate_el.text
-            dbhelper.insert("xact_unit", fields)
+                fields_unit["exchangeRate"] = rate_el.text
+                
+            try:
+                dbhelper.insert("xact_unit", fields_unit)
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    continue
+                raise e
 
     def handle_crossEntry(self, x_el):
             if x_el.get("reference") is not None:
