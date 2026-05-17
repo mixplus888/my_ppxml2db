@@ -2,17 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies (git and sqlite3)
-RUN apt-get update && apt-get install -y git sqlite3 && rm -rf /var/lib/apt/lists/*
+# Install sqlite3 for the database conversions
+RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
 
-# Clone the ppxml2db utility directly into the image
-RUN git clone https://github.com/vondis/ppxml2db.git .
+# Install python dependencies from your repo
+COPY requirements.txt* ./
+RUN pip install --no-cache-dir -r requirements.txt || echo "No requirements file or empty"
 
-# Copy your custom python automation scripts into the container
-COPY append_transactions.py /app/append_transactions.py
-COPY sync_pipeline.sh /app/sync_pipeline.sh
+# Copy all your repository files (including ppxml2db.py) into the container
+COPY . /app
 
 RUN chmod +x /app/sync_pipeline.sh
 
-# CRITICAL: Keep container alive so Dokploy can execute commands inside it
+# Keep container alive for execution
 CMD ["tail", "-f", "/dev/null"]
